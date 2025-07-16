@@ -22,6 +22,45 @@ services:
       - ./credentials:/app/credentials:ro
     networks:
       - aisales-network
+    command: ["python", "main.py"]
+
+  # Streamlit 前端
+  aisales-streamlit:
+    build: .
+    ports:
+      - "8501:8501"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+    depends_on:
+      - redis
+      - chromadb
+    volumes:
+      - .:/app
+      - ./credentials:/app/credentials:ro
+    networks:
+      - aisales-network
+    command: ["streamlit", "run", "app_streamlit.py", "--server.port=8501", "--server.address=0.0.0.0"]
+
+  # Gradio 前端
+  aisales-gradio:
+    build: .
+    ports:
+      - "7860:7860"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+    depends_on:
+      - redis
+      - chromadb
+    volumes:
+      - .:/app
+      - ./credentials:/app/credentials:ro
+    networks:
+      - aisales-network
+    command: ["python", "app_gradio.py"]
 
   # Redis 記憶體快取
   redis:

@@ -585,3 +585,142 @@ python test_langgraph_workflow.py
 2. 創建功能分支
 3. 提交變更
 4. 發起 Pull Request
+
+## 🚀 快速啟動
+
+本專案提供了一個便捷的啟動腳本，幫助您快速啟動不同的服務組合。
+
+### 使用啟動腳本
+
+```bash
+# 給腳本執行權限
+chmod +x start.sh
+
+# 運行啟動腳本
+./start.sh
+```
+
+腳本會顯示以下選項：
+
+```
+=== AI Sales 系統啟動選項 ===
+1. 啟動 API 服務 (port 8000)
+2. 啟動 Streamlit 介面 (port 8501)
+3. 啟動 Gradio 介面 (port 7860)
+4. 同時啟動所有服務
+5. 使用 Docker Compose 啟動
+6. 退出
+```
+
+### 各種啟動方式詳解
+
+#### 1. 單獨啟動 API 服務
+```bash
+# 手動啟動
+python main.py
+
+# 使用腳本
+./start.sh  # 選擇選項 1
+```
+- 訪問地址：`http://localhost:8000`
+- API 文檔：`http://localhost:8000/docs`
+- 適合：純 API 開發、第三方整合
+
+#### 2. 單獨啟動 Streamlit 介面
+```bash
+# 手動啟動
+streamlit run app_streamlit.py --server.port=8501 --server.address=0.0.0.0
+
+# 使用腳本
+./start.sh  # 選擇選項 2
+```
+- 訪問地址：`http://localhost:8501`
+- 適合：即時視覺分析、情緒識別、相機互動
+
+#### 3. 單獨啟動 Gradio 介面
+```bash
+# 手動啟動
+python app_gradio.py
+
+# 使用腳本
+./start.sh  # 選擇選項 3
+```
+- 訪問地址：`http://localhost:7860`
+- 適合：對話測試、功能演示
+
+#### 4. 同時啟動所有服務
+```bash
+# 使用腳本
+./start.sh  # 選擇選項 4
+```
+- 同時啟動 API (8000)、Streamlit (8501)、Gradio (7860)
+- 適合：完整功能測試、演示
+
+#### 5. Docker Compose 部署
+```bash
+# 使用腳本
+./start.sh  # 選擇選項 5
+
+# 等同於
+docker-compose up --build
+```
+
+## ⚠️ 重要注意事項
+
+### 服務啟動順序
+
+1. **獨立啟動**：每個服務 (API、Streamlit、Gradio) 都是獨立的，啟動一個不會自動啟動其他服務
+2. **API 服務**：提供 OpenAI 相容的 API 接口
+3. **Streamlit**：提供即時視覺分析和攝影機互動功能
+4. **Gradio**：提供對話測試和功能演示介面
+
+### 視覺功能使用
+
+如果您想使用視覺相關功能（如情緒分析、服裝顏色識別等）：
+
+1. **啟動 Streamlit 介面**：
+   ```bash
+   ./start.sh  # 選擇選項 2
+   # 或
+   streamlit run app_streamlit.py --server.port=8501 --server.address=0.0.0.0
+   ```
+
+2. **使用攝影機功能**：
+   - 點擊「📹 啟動攝影機」
+   - 確保瀏覽器允許攝影機權限
+   - 在對話中提問視覺相關問題，如：
+     - "你看得到我嗎？"
+     - "我穿什麼顏色的衣服？"
+     - "分析我的表情"
+
+### 環境配置檢查
+
+運行前請確認：
+
+```bash
+# 檢查虛擬環境
+source .venv/bin/activate
+
+# 檢查 .env 文件
+cat .env | grep -E "(API_KEY|MODEL_NAME)"
+
+# 檢查 Redis 和 ChromaDB（如果使用 Docker）
+docker-compose ps
+```
+
+### 故障排除
+
+1. **攝影機無法啟動**：
+   - 確保瀏覽器允許攝影機權限
+   - 使用 HTTPS 或 localhost
+   - 檢查其他程式是否佔用攝影機
+
+2. **視覺分析失敗**：
+   - 確認 `VISION_API_KEY` 設定正確
+   - 確認使用支援視覺的模型（如 `gpt-4o`）
+   - 檢查網路連接
+
+3. **服務無法啟動**：
+   - 檢查端口是否被佔用：`lsof -i :8000`
+   - 確認依賴套件已安裝：`pip install -r requirements.txt`
+   - 檢查 `.env` 文件配置
