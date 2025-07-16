@@ -585,14 +585,3 @@ python test_langgraph_workflow.py
 2. 創建功能分支
 3. 提交變更
 4. 發起 Pull Request
-
-## 📄 授權
-
-此專案使用 MIT 授權條款。
-
-## 🆘 支援
-
-如有問題，請聯繫：
-- 電子郵件: support@aisales.com
-- 文檔: [Wiki](wiki-url)
-- 問題回報: [Issues](issues-url)
