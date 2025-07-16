@@ -1,0 +1,69 @@
+# FastAPI 核心
+fastapi
+uvicorn
+python-multipart
+
+# OpenAI 相容性
+openai
+pydantic
+pydantic-settings
+
+# LangChain 生態系
+langchain
+langchain-community
+langchain-openai
+langchain-google-genai
+langchain-core
+langgraph
+
+# Gradio 前端介面
+gradio
+
+# Streamlit 前端介面
+streamlit
+
+# 向量資料庫
+chromadb
+sentence-transformers
+
+# 記憶體和快取
+redis
+
+# 工具和實用程式
+python-dotenv
+aiofiles
+httpx
+pillow
+paddleocr
+
+# 監控和日誌
+prometheus-client
+structlog
+
+# 開發工具
+pytest
+pytest-asyncio
+black
+flake8
+mypy
+
+# 多媒體處理
+opencv-python
+numpy
+
+# Google APIs
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
+
+# PDF 處理
+PyMuPDF
+PyPDF2
+
+# 排程和工作流
+schedule
+
+# 其他
+typing-extensions
+python-jose
+bcrypt

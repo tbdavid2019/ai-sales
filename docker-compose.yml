@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  # AI Sales API 服務
+  aisales-api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      # Google Calendar 設定
+      - GOOGLE_CALENDAR_CREDENTIALS_FILE=/app/credentials/credentials.json
+      - GOOGLE_CALENDAR_TOKEN_FILE=/app/credentials/token.json
+    depends_on:
+      - redis
+      - chromadb
+    volumes:
+      - .:/app
+      # Google Calendar 憑證掛載 (如果存在)
+      - ./credentials:/app/credentials:ro
+    networks:
+      - aisales-network
+
+  # Redis 記憶體快取
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - aisales-network
+
+  # ChromaDB 向量資料庫
+  chromadb:
+    image: ghcr.io/chroma-core/chroma:latest
+    ports:
+      - "8001:8000"
+    environment:
+      - CHROMA_HOST=0.0.0.0
+      - CHROMA_PORT=8000
+    volumes:
+      - chromadb_data:/chroma/chroma
+    networks:
+      - aisales-network
+
+volumes:
+  redis_data:
+  chromadb_data:
+
+networks:
+  aisales-network:
+    driver: bridge

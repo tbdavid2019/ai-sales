@@ -1,0 +1,325 @@
+AI Sales Multi-Agent 系統設計文檔
+========================================
+
+📋 MVP 階段架構設計
+
+🎯 開發階段規劃
+MVP 階段：基礎 API + ChatAgent
+功能完善：新增 CardAgent 和 CalendarAgent  
+效能優化：Redis 快取和並行處理
+生產部署：Docker 化和監控系統
+
+⸻
+
+🤖 Multi-Agent 模型配置策略
+
+🔧 模型選型理由與配置
+
+主控 Agent (ControlAgent)
+• 模型：gemini-2.0-flash-lite
+• 理由：優秀的推理能力和多語言支援，適合任務路由判斷
+• 負責：分析用戶意圖、決定調用哪個 Sub-Agent、整合回覆
+
+ChatAgent (銷售對話)
+• 模型：gemini-2.0-flash-lite
+• 理由：自然對話能力強，適合銷售情境的角色扮演
+• 負責：一般銷售話術、寒暄、產品介紹
+• 搭配：RAG 系統增強產品知識
+
+RAG Embedding 系統
+• 模型：OpenAI text-embedding-3-large
+• 理由：業界標準，向量品質高，中文支援佳
+• 負責：產品知識庫、FAQ、白皮書的向量化搜索
+
+CalendarAgent (行事曆整合)
+• 模型：Chatgpt-4.1-mini (instruction 模型)
+• 理由：指令跟隨能力強，適合結構化任務處理
+• 負責：時間解析、Google Calendar API 調用、會議安排
+
+CardAgent (名片 OCR)
+• 模型：gemini-2.5-flash
+• 理由：多模態能力，圖片理解和文字提取
+• 負責：名片圖片分析、資訊提取、品質判斷
+
+RAGAgent (知識庫檢索)
+• 模型：gemini-2.0-flash-lite
+• 理由：優秀的文本理解和推理能力，適合知識整合
+• 負責：從向量資料庫檢索相關知識、整合多個知識片段、生成準確回答
+• 搭配：OpenAI embedding 進行語義搜索
+• 功能：產品資訊查詢、FAQ 回答、技術文件檢索、競品分析
+
+⸻
+
+🏗️ 系統架構設計
+
+📁 專案結構
+aisales/
+├── app/
+│   ├── agents/
+│   │   ├── __init__.py
+│   │   ├── control_agent.py      # 主控 Agent
+│   │   ├── chat_agent.py         # 對話 Agent
+│   │   ├── calendar_agent.py     # 行事曆 Agent
+│   │   ├── card_agent.py         # 名片 Agent
+│   │   └── rag_agent.py          # RAG 知識檢索 Agent
+│   ├── models/
+│   │   ├── __init__.py
+│   │   ├── llm_factory.py        # 模型工廠
+│   │   └── embeddings.py         # 向量模型
+│   ├── core/
+│   │   ├── __init__.py
+│   │   ├── workflow.py           # LangGraph 工作流
+│   │   ├── memory.py             # 記憶體管理
+│   │   └── tools.py              # 各種工具
+│   ├── api/
+│   │   ├── __init__.py
+│   │   ├── openai_compatible.py  # OpenAI 相容 API
+│   │   └── models.py             # Pydantic 模型
+│   └── config/
+│       ├── __init__.py
+│       └── settings.py           # 設定管理
+├── .env
+├── requirements.txt
+├── docker-compose.yml
+└── README.md
+
+⸻
+
+🔧 環境變數設計 (.env)
+
+# 主控 Agent - Gemini
+GEMINI_API_KEY=your_gemini_api_key
+GEMINI_BASE_URL=https://generativelanguage.googleapis.com
+GEMINI_MODEL_NAME=gemini-2.0-flash-lite
+
+# ChatAgent - Gemini
+CHAT_MODEL_API_KEY=your_gemini_api_key
+CHAT_MODEL_BASE_URL=https://generativelanguage.googleapis.com
+CHAT_MODEL_NAME=gemini-2.0-flash-lite
+
+# RAG Embedding 
+OPENAI_API_KEY=your_openai_api_key
+OPENAI_BASE_URL=https://api.openai.com/v1
+EMBEDDING_MODEL_NAME=text-embedding-3-large
+
+# CalendarAgent
+CLAUDE_API_KEY=your_claude_api_key
+CLAUDE_BASE_URL=https://api.anthropic.com
+CALENDAR_MODEL_NAME=gpt-4.1-mini
+
+# CardAgent
+VISION_API_KEY=your_openai_api_key
+VISION_BASE_URL=https://api.openai.com/v1
+VISION_MODEL_NAME=gpt-4
+
+# RAGAgent - Gemini
+RAG_MODEL_API_KEY=your_gemini_api_key
+RAG_MODEL_BASE_URL=https://generativelanguage.googleapis.com
+RAG_MODEL_NAME=gemini-2.0-flash-lite
+
+# 向量資料庫設定
+VECTOR_DB_TYPE=chromadb  # chromadb, pinecone, weaviate
+CHROMA_HOST=localhost
+CHROMA_PORT=8000
+CHROMA_COLLECTION_NAME=aisales_knowledge
+
+# 系統設定
+REDIS_URL=redis://localhost:6379
+API_HOST=0.0.0.0
+API_PORT=8000
+
+⸻
+
+🔄 LangChain 工作流與路由設計
+
+🎯 LangGraph 工作流架構
+
+1. 入口節點 (Entry)
+   • 接收用戶輸入
+   • 初始化對話狀態
+   • 載入歷史記憶
+
+2. 意圖分析節點 (Intent Analysis)
+   • 使用 ControlAgent 分析用戶意圖
+   • 判斷需要調用哪個 Sub-Agent
+   • 提取相關參數
+
+3. 路由決策節點 (Router)
+   • 根據意圖分析結果路由到對應 Agent
+   • 支援多個 Agent 並行處理
+   • 處理 Agent 間的依賴關係
+
+4. Agent 執行節點
+   • ChatAgent: 一般對話處理
+   • CardAgent: 圖片 OCR 處理
+   • CalendarAgent: 時間和行事曆處理
+   • RAGAgent: 知識庫檢索和回答生成
+
+5. 結果整合節點 (Aggregator)
+   • 整合各 Agent 的執行結果
+   • 生成最終回覆
+   • 更新對話記憶
+
+6. 輸出節點 (Output)
+   • 格式化為 OpenAI 相容格式
+   • 支援 stream 和 non-stream
+   • 記錄對話日誌
+
+🔀 路由邏輯設計
+
+def route_to_agent(state: ConversationState) -> str:
+    """
+    根據用戶輸入和對話狀態決定路由
+    """
+    user_input = state.get("user_input")
+    has_image = state.get("has_image", False)
+    
+    # 圖片處理優先
+    if has_image:
+        return "card_agent"
+    
+    # 時間相關關鍵字
+    time_keywords = ["會議", "約", "時間", "行事曆", "空檔"]
+    if any(keyword in user_input for keyword in time_keywords):
+        return "calendar_agent"
+    
+    # 產品/技術相關關鍵字 - 觸發 RAG 搜索
+    knowledge_keywords = ["產品", "功能", "規格", "價格", "技術", "服務", "方案", "比較", "優勢"]
+    if any(keyword in user_input for keyword in knowledge_keywords):
+        return "rag_agent"
+    
+    # 預設使用 ChatAgent
+    return "chat_agent"
+
+⸻
+
+🧠 記憶體管理設計
+
+📊 多層記憶架構
+
+1. 短期記憶 (Redis)
+   • Session 管理
+   • 對話上下文 (最近 10 輪)
+   • Agent 執行狀態
+   • 用戶資料 (姓名、職位、公司)
+
+2. 長期記憶 (向量數據庫)
+   • 產品知識庫
+   • 歷史對話摘要
+   • 文檔資料庫
+
+🔄 記憶體同步機制
+• 每次對話結束後更新用戶檔案
+• 定期將短期記憶歸檔到長期記憶
+• 使用 LangChain Memory 模組處理上下文
+
+⸻
+
+🛠️ 技術實現細節
+
+🔧 LangChain 整合要點
+
+1. 自訂 LLM 包裝器
+   • 統一不同模型的介面
+   • 處理 API 限制和重試
+   • 實現 token 計算和成本控制
+
+2. 工具整合
+   • Google Calendar API 工具
+   • OCR 處理工具
+   • 向量搜索工具
+   • RAG 知識庫檢索工具
+
+3. 記憶體整合
+   • 自訂 Memory 類別
+   • 支援多用戶 Session
+   • 實現記憶體持久化
+
+4. 串流支援
+   • 實現 AsyncIterator
+   • 支援 Agent 處理進度回報
+   • 相容 OpenAI 串流格式
+
+🎯 RAGAgent 技術實現細節
+
+1. 知識庫架構
+   • 向量資料庫：ChromaDB / Pinecone / Weaviate
+   • 文件處理：支援 PDF、Word、Markdown、HTML
+   • 分塊策略：語義分塊 + 重疊處理
+   • 元資料：文件來源、更新時間、分類標籤
+
+2. 檢索策略
+   • 混合搜索：向量搜索 + 關鍵字搜索
+   • 重排序：使用 reranker 提升檢索精度
+   • 多輪檢索：根據對話歷史調整搜索策略
+   • 濾波機制：過濾低相關性結果
+
+3. 回答生成
+   • 上下文整合：多個檢索結果的智能合併
+   • 引用標註：標明資訊來源和可信度
+   • 答案驗證：檢查生成內容的準確性
+   • 回退機制：無相關知識時的處理策略
+
+4. 知識更新
+   • 自動同步：定期更新知識庫內容
+   • 增量更新：只更新變更的文件
+   • 版本管理：維護知識庫的版本歷史
+   • 品質控制：新增內容的審核機制
+
+⸻
+
+🚀 MVP 實現重點
+
+📋 第一階段 (ChatAgent + RAGAgent)
+1. 建立基礎 FastAPI 服務
+2. 實現 OpenAI 相容的 /v1/chat/completions
+3. 整合 Gemini 作為 ChatAgent
+4. 建立 RAGAgent 和向量資料庫連接
+5. 實現基本的對話記憶
+6. 建立 RAG 系統架構和知識庫
+
+📋 RAG 系統測試重點
+• 向量搜索準確性測試
+• 知識庫內容品質驗證
+• 回答相關性評估
+• 引用準確性檢查
+
+📋 測試策略
+• 單元測試：各 Agent 的獨立功能
+• 整合測試：工作流程的完整性
+• 效能測試：並行處理和記憶體使用
+• 相容性測試：OpenAI API 相容性
+
+⸻
+
+🔍 監控與可觀測性
+
+📊 關鍵指標
+• Agent 回應時間
+• 模型 API 調用成功率
+• 記憶體使用情況
+• 對話品質評分
+
+🔧 監控工具
+• Prometheus: 指標收集
+• Grafana: 視覺化儀表板
+• Jaeger: 分散式追蹤
+• ELK Stack: 日誌分析
+
+⸻
+
+💡 後續擴展考慮
+
+🎯 模型靈活性
+• 支援模型熱切換
+• A/B 測試不同模型組合
+• 成本優化的模型選擇策略
+
+🔧 系統擴展性
+• 水平擴展設計
+• 負載平衡策略
+• 跨區域部署支援
+
+⸻
+
+這個設計確保了系統的模組化、可擴展性和維護性，同時保持了與 OpenAI API 的完全相容性。
