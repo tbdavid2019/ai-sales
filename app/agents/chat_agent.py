@@ -20,6 +20,11 @@ class ChatAgent(BaseAgent):
         session_id = input_data.get("session_id", "")
         user_profile = input_data.get("user_profile", {})
         
+        # 新增：從輸入中取得回應模式和參數
+        response_mode = input_data.get("response_mode", "chat")
+        max_tokens = input_data.get("max_tokens")
+        temperature = input_data.get("temperature")
+        
         # 始終從記憶體中讀取最新的用戶資料
         if session_id:
             memory_profile = self.memory.load_user_profile(session_id) or {}
@@ -36,8 +41,10 @@ class ChatAgent(BaseAgent):
         response = await self._generate_response(
             user_input, 
             context, 
-            input_data.get("interaction_mode", "chat"),
-            has_user_profile=bool(user_profile)
+            response_mode,
+            has_user_profile=bool(user_profile),
+            max_tokens=max_tokens,
+            temperature=temperature
         )
         
         # 保存對話歷史
@@ -48,6 +55,9 @@ class ChatAgent(BaseAgent):
             content=response,
             metadata={
                 "conversation_length": len(conversation_history),
+                "response_mode": response_mode,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
                 "user_profile": user_profile,
                 "has_user_data": bool(user_profile)
             }
@@ -106,7 +116,9 @@ class ChatAgent(BaseAgent):
         
         return "\\n".join(context_parts)
     
-    async def _generate_response(self, user_input: str, context: str, mode: str = "chat", has_user_profile: bool = False) -> str:
+    async def _generate_response(self, user_input: str, context: str, mode: str = "chat", 
+                               has_user_profile: bool = False, max_tokens: int = None, 
+                               temperature: float = None) -> str:
         """生成對話回應"""
         try:
             # 修正：無論如何，只要用戶沒有輸入文字，就返回引導語，避免空請求
@@ -146,7 +158,21 @@ class ChatAgent(BaseAgent):
             from langchain_core.messages import HumanMessage
             
             message = HumanMessage(content=full_prompt)
-            response = await self.llm.ainvoke([message])
+            
+            # 建立 LLM 調用參數
+            llm_kwargs = {}
+            if max_tokens is not None:
+                llm_kwargs['max_tokens'] = max_tokens
+            if temperature is not None:
+                llm_kwargs['temperature'] = temperature
+            
+            # 如果有自定義參數，創建新的 LLM 實例
+            if llm_kwargs:
+                from app.models.llm_factory import LLMFactory
+                custom_llm = LLMFactory.get_chat_agent_llm(**llm_kwargs)
+                response = await custom_llm.ainvoke([message])
+            else:
+                response = await self.llm.ainvoke([message])
             
             return response.content.strip()
             

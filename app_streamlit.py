@@ -212,6 +212,24 @@ with st.sidebar:
         help="選擇 AI 助理的互動風格"
     )
     
+    # 虛擬人與文字 UI 模式選擇
+    st.subheader("🤖 回應模式")
+    response_mode = st.selectbox(
+        "回應模式",
+        ["一般文字模式 (Chat)", "虛擬人模式 (Virtual Human)"],
+        index=0,
+        help="選擇 AI 的回應風格：一般模式提供詳細回答，虛擬人模式提供簡短互動"
+    )
+    
+    # LLM 輸出參數控制
+    st.subheader("📝 輸出參數")
+    if "虛擬人" in response_mode:
+        max_tokens = st.slider("回應長度 (字數)", 20, 200, 50, 10, help="虛擬人模式建議使用較短的回應")
+        temperature = st.slider("回應創意度", 0.1, 1.0, 0.8, 0.1, help="虛擬人模式建議使用較高的創意度")
+    else:
+        max_tokens = st.slider("回應長度 (字數)", 100, 2000, 500, 50, help="一般模式可以使用較長的回應")
+        temperature = st.slider("回應創意度", 0.1, 1.0, 0.7, 0.1, help="一般模式建議使用中等創意度")
+    
     # 視覺分析設定
     st.subheader("👁️ 視覺分析")
     vision_enabled = st.checkbox("啟用情緒分析", value=True)
@@ -229,6 +247,17 @@ with st.sidebar:
             st.warning("📸 尚未拍照")
     else:
         st.info("📷 攝影機待機中")
+    
+    # 當前設定顯示
+    st.subheader("⚙️ 當前設定")
+    st.write(f"**互動模式**: {interaction_mode}")
+    st.write(f"**回應模式**: {response_mode}")
+    st.write(f"**最大回應長度**: {max_tokens} 字")
+    st.write(f"**創意度**: {temperature}")
+    if vision_enabled:
+        st.write(f"**情緒敏感度**: {emotion_sensitivity}")
+    else:
+        st.write("**情緒分析**: 已停用")
     
     # 用戶檔案
     st.subheader("👤 用戶檔案")
@@ -276,13 +305,19 @@ with col1:
                     logger.info(f"攝影機圖片存在: {'current_camera_image' in st.session_state}")
                     logger.info(f"攝影機圖片內容: {camera_image is not None}")
                     
+                    # 確定模式參數
+                    mode = "virtual_human" if "虛擬人" in response_mode else "chat"
+                    
                     # 使用統一的核心處理函數
                     response_text, updated_profile = safe_run_async(process_user_request(
                         message=user_input,
                         image=camera_image,
                         user_profile=st.session_state.user_profile,
                         interaction_mode=interaction_mode,
-                        session_id="streamlit_session"
+                        session_id="streamlit_session",
+                        response_mode=mode,
+                        max_tokens=max_tokens,
+                        temperature=temperature
                     ))
                     
                     # 更新聊天歷史
@@ -367,13 +402,19 @@ with col2:
         if st.button("🔍 分析圖片"):
             with st.spinner("正在分析圖片..."):
                 try:
+                    # 確定模式參數
+                    mode = "virtual_human" if "虛擬人" in response_mode else "chat"
+                    
                     # 使用統一的核心處理函數
                     response_text, updated_profile = safe_run_async(process_user_request(
                         message="",
                         image=image,  # 直接傳遞 PIL Image
                         user_profile=st.session_state.user_profile,
                         interaction_mode=interaction_mode,
-                        session_id="streamlit_session"
+                        session_id="streamlit_session",
+                        response_mode=mode,
+                        max_tokens=max_tokens,
+                        temperature=temperature
                     ))
                     
                     # 更新聊天歷史

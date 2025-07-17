@@ -54,12 +54,18 @@ class LLMFactory:
         )
     
     @staticmethod
-    def get_chat_agent_llm() -> BaseLanguageModel:
+    def get_chat_agent_llm(
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+        **kwargs
+    ) -> BaseLanguageModel:
         """獲取對話 Agent 的 LLM"""
         return LLMFactory.create_gemini_llm(
             api_key=settings.chat_model_api_key,
             model_name=settings.chat_model_name,
-            temperature=0.7
+            temperature=temperature if temperature is not None else 0.7,
+            max_tokens=max_tokens,
+            **kwargs
         )
     
     @staticmethod

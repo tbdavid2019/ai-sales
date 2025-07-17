@@ -23,11 +23,11 @@ RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
 # 暴露端口
-EXPOSE 8000 8501 7860
+EXPOSE 8000
 
 # 健康檢查
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# 預設啟動命令（可被 docker-compose 覆蓋）
+# 啟動命令
 CMD ["python", "main.py"]

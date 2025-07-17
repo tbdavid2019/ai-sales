@@ -15,7 +15,10 @@ async def process_user_request(
     image: Optional[Any],
     user_profile: Dict[str, Any],
     interaction_mode: str,
-    session_id: str = "default_session"
+    session_id: str = "default_session",
+    response_mode: str = "chat",
+    max_tokens: Optional[int] = None,
+    temperature: Optional[float] = None
 ) -> Tuple[str, Dict[str, Any]]:
     """
     統一處理用戶請求的核心函數
@@ -26,6 +29,9 @@ async def process_user_request(
         user_profile: 用戶檔案
         interaction_mode: 互動模式 (sales, support, consultation)
         session_id: 會話ID
+        response_mode: 回應模式 (chat, virtual_human)
+        max_tokens: 最大 token 數
+        temperature: 溫度參數
         
     Returns:
         Tuple[回應內容, 更新後的用戶檔案]
@@ -58,7 +64,10 @@ async def process_user_request(
         "has_image": has_image,
         "image_data": image_data,
         "user_profile": user_profile,
-        "interaction_mode": interaction_mode
+        "interaction_mode": interaction_mode,
+        "response_mode": response_mode,
+        "max_tokens": max_tokens,
+        "temperature": temperature
     }
     logger.info(f"工作流輸入: user_input='{message}', has_image={has_image}, session_id={session_id}")
     if has_image:
