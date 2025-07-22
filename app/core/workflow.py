@@ -518,18 +518,34 @@ class LangGraphWorkflowManager:
         # 並行模式的 Agent 選擇
         agents = [primary_agent]
         
-        # 智能添加輔助 Agent
-        if has_image and "card_agent" not in agents:
-            agents.append("card_agent")
-            logger.info(f"添加 card_agent 因為 has_image={has_image}")
+        # 智能判斷圖片類型並添加相應 Agent
+        if has_image:
+            # 判斷是否為名片掃描還是攝影機影像
+            card_keywords = ["名片", "卡片", "聯絡", "資訊", "掃描", "識別", "上傳"]
+            has_card_keywords = any(keyword in user_input for keyword in card_keywords)
+            
+            # 對話關鍵字表示這是攝影機影像
+            chat_keywords = ["你好", "哈囉", "hi", "hello", "謝謝", "再見", "問候", "聊天"]
+            has_chat_keywords = any(keyword in user_input.lower() for keyword in chat_keywords)
+            
+            # 如果有名片關鍵字，或者純圖片上傳（很少文字），添加 card_agent
+            if has_card_keywords or (len(user_input.strip()) < 10 and not has_chat_keywords):
+                if "card_agent" not in agents:
+                    agents.append("card_agent")
+                    logger.info(f"添加 card_agent 因為有名片關鍵字或純圖片上傳")
+            
+            # 如果有明確的對話意圖，添加 vision_agent 用於情緒分析
+            if has_chat_keywords or len(user_input.strip()) >= 10:
+                if "vision_agent" not in agents:
+                    agents.append("vision_agent")
+                    logger.info(f"添加 vision_agent 因為有對話意圖")
         
         # 對於視覺相關的問題，添加 VisionAgent
         vision_keywords = ["看", "視覺", "攝影機", "鏡頭", "表情", "情緒", "外觀", "穿", "顏色", "男生", "女生"]
-        vision_triggered = has_image or any(keyword in user_input for keyword in vision_keywords)
-        if vision_triggered:
+        if any(keyword in user_input for keyword in vision_keywords):
             if "vision_agent" not in agents:
                 agents.append("vision_agent")
-                logger.info(f"添加 vision_agent 因為 has_image={has_image} 或包含關鍵字: {[k for k in vision_keywords if k in user_input]}")
+                logger.info(f"添加 vision_agent 因為包含關鍵字: {[k for k in vision_keywords if k in user_input]}")
         
         if primary_intent == "comparison" and "rag_agent" not in agents:
             agents.append("rag_agent")
@@ -896,6 +912,15 @@ class LangGraphWorkflowManager:
         """為特定 Agent 準備上下文"""
         base_context = input_data.copy()
         
+        # 確保用戶資料被傳遞到所有 Agent
+        session_id = input_data.get("session_id")
+        if session_id and not base_context.get("user_profile"):
+            from app.core.memory import memory_manager
+            user_profile = memory_manager.load_user_profile(session_id)
+            if user_profile:
+                base_context["user_profile"] = user_profile
+                logger.info(f"為 {agent_name} 載入用戶資料: {user_profile.get('name', 'Unknown')}")
+        
         # 根據 Agent 類型添加特定上下文
         if agent_name == "card_agent":
             base_context.update({
@@ -920,6 +945,12 @@ class LangGraphWorkflowManager:
                 "focus": "一般對話和客戶服務",
                 "expected_output": "友好的對話回應",
                 "processing_mode": "conversational"
+            })
+        elif agent_name == "vision_agent":
+            base_context.update({
+                "focus": "即時影像情緒分析",
+                "expected_output": "情緒識別結果",
+                "processing_mode": "emotion_analysis"
             })
         
         return base_context
@@ -1470,11 +1501,14 @@ class LangGraphWorkflowManager:
         retry_count = 0
         
         # 確保載入用戶資料
-        if session_id and not input_data.get("user_profile"):
+        if session_id:
             from app.core.memory import memory_manager
             user_profile = memory_manager.load_user_profile(session_id)
             if user_profile:
                 input_data["user_profile"] = user_profile
+                logger.info(f"已載入用戶資料: {user_profile.get('name', 'Unknown')}")
+            else:
+                logger.info("未找到用戶資料")
         
         while retry_count < max_retries:
             try:
@@ -1682,8 +1716,35 @@ class LangGraphWorkflowManager:
         if any(keyword in user_input for keyword in ["產品", "功能", "價格", "方案"]):
             if "rag_agent" not in agents:
                 agents.append("rag_agent")
-        
         return agents
+    
+    def _is_card_upload(self, user_input: str, input_data: Dict[str, Any]) -> bool:
+        """判斷是否為名片上傳而非攝影機即時影像"""
+        # 檢查是否有明確的名片相關關鍵字
+        card_keywords = ["名片", "卡片", "聯絡", "資訊", "掃描", "識別", "上傳"]
+        has_card_keywords = any(keyword in user_input for keyword in card_keywords)
+        
+        # 檢查圖片來源類型（如果有的話）
+        image_source = input_data.get("image_source", "")
+        is_upload = image_source in ["upload", "file", "drag_drop"]
+        
+        # 檢查是否為純圖片上傳（無文字或很少文字）
+        is_minimal_text = len(user_input.strip()) < 10
+        
+        # 如果有名片關鍵字，或者是上傳且文字很少，認為是名片掃描
+        if has_card_keywords or (is_upload and is_minimal_text):
+            return True
+            
+        # 如果有明確的對話意圖，認為是攝影機影像
+        chat_keywords = ["你好", "哈囉", "hi", "hello", "謝謝", "再見", "問候", "聊天"]
+        has_chat_keywords = any(keyword in user_input.lower() for keyword in chat_keywords)
+        
+        if has_chat_keywords:
+            return False
+            
+        # 預設：如果文字很少且沒有明確指示，認為是名片掃描
+        return is_minimal_text
+
 
 
 # 創建全域工作流管理器實例
