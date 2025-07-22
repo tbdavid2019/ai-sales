@@ -45,9 +45,9 @@ class OpenAICompatibleAPI:
         self.token_counter = get_token_counter()
     
     async def chat_completions(self, request: ChatCompletionRequest) -> ChatCompletionResponse:
-        """處理聊天完成請求"""
-        # 使用統一的核心處理函數
-        from app.core.ui_handler import process_user_request
+        """處理聊天完成請求 - 使用修復的工作流管理器"""
+        # 使用修復的工作流管理器
+        from app.core.workflow import workflow_manager
 
         request_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
         session_id = request.user or f"session-{uuid.uuid4().hex[:8]}"
@@ -83,17 +83,40 @@ class OpenAICompatibleAPI:
             # 檢查是否有圖片內容
             image_content = self._extract_image_content(request.messages)
             
-            # 使用統一的核心處理函數
-            response_content, updated_profile = await process_user_request(
-                message=user_message,
-                image=image_content,
-                user_profile=user_profile,
-                interaction_mode="sales",  # API 預設為銷售模式
-                session_id=session_id
-            )
+            # 準備工作流輸入 - 包含修復的參數
+            workflow_input = {
+                "user_input": user_message,
+                "session_id": session_id,
+                "has_image": bool(image_content),
+                "image_data": image_content,
+                "image_source": "api",  # 標記為API來源
+                "user_profile": user_profile,
+                "request_id": request_id,
+                "max_tokens": request.max_tokens,
+                "temperature": request.temperature,
+                "response_mode": "api"  # API模式
+            }
             
-            # 儲存更新後的用戶檔案
-            if updated_profile != user_profile:
+            # 使用修復的工作流管理器
+            workflow_result = await workflow_manager.execute_workflow(workflow_input)
+            
+            if not workflow_result.success:
+                logger.error(
+                    "工作流執行失敗",
+                    error=workflow_result.error,
+                    request_id=request_id,
+                    session_id=session_id
+                )
+                raise error_handler.handle_internal_error(
+                    workflow_result.error or Exception("工作流執行失敗"),
+                    "workflow_execution"
+                )
+            
+            response_content = workflow_result.content
+            
+            # 檢查是否有用戶資料更新
+            if workflow_result.metadata.get("updated_user_profile"):
+                updated_profile = workflow_result.metadata["updated_user_profile"]
                 memory_manager.save_user_profile(session_id, updated_profile)
             
             # 計算 token 使用量
@@ -130,7 +153,8 @@ class OpenAICompatibleAPI:
                 duration=total_duration,
                 request_id=request_id,
                 prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens
+                completion_tokens=completion_tokens,
+                agents_used=list(workflow_result.agent_results.keys())
             )
             
             return response
@@ -155,104 +179,6 @@ class OpenAICompatibleAPI:
                             # 提取 base64 部分
                             return image_url.split(',')[1] if ',' in image_url else image_url
         return None
-    
-    async def chat_completions(self, request: ChatCompletionRequest) -> ChatCompletionResponse:
-        """處理聊天完成請求"""
-        # 使用統一的核心處理函數
-        from app.core.ui_handler import process_user_request
-
-        request_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
-        session_id = request.user or f"session-{uuid.uuid4().hex[:8]}"
-        start_time = time.time()
-        
-        try:
-            # 記錄請求
-            logger.log_api_request(
-                request_id=request_id,
-                method="POST",
-                path="/v1/chat/completions",
-                session_id=session_id,
-                model=request.model,
-                stream=request.stream
-            )
-            
-            # 提取用戶輸入
-            user_message = self._extract_user_message(request.messages)
-            
-            # 內容安全檢查
-            from app.core.security import security_middleware
-            if not security_middleware.check_content_safety(user_message):
-                logger.warning("危險內容檢測", content=user_message[:100])
-                raise error_handler.create_openai_error_response(
-                    error_type="content_policy_violation",
-                    message="輸入內容不符合安全政策",
-                    status_code=400
-                )
-            
-            # 載入用戶檔案
-            user_profile = memory_manager.load_user_profile(session_id) or {}
-            
-            # 載入用戶檔案
-            user_profile = memory_manager.load_user_profile(session_id) or {}
-            
-            # 檢查是否有圖片內容
-            image_content = self._extract_image_content(request.messages)
-            
-            # 使用統一的核心處理函數
-            response_content, updated_profile = await process_user_request(
-                message=user_message,
-                image=image_content,
-                user_profile=user_profile,
-                interaction_mode="sales",  # API 預設為銷售模式
-                session_id=session_id
-            )
-            
-            # 儲存更新後的用戶檔案
-            if updated_profile != user_profile:
-                memory_manager.save_user_profile(session_id, updated_profile)
-            
-            # 計算 token 使用量
-            self.token_counter.model_name = request.model
-            prompt_tokens = self.token_counter.count_messages_tokens(request.messages)
-            completion_tokens = self.token_counter.count_tokens(response_content)
-            
-            # 構建回應
-            response = ChatCompletionResponse(
-                id=request_id,
-                created=int(time.time()),
-                model=request.model,
-                choices=[
-                    ChatCompletionChoice(
-                        index=0,
-                        message=Message(
-                            role=MessageRole.ASSISTANT,
-                            content=response_content
-                        ),
-                        finish_reason="stop"
-                    )
-                ],
-                usage=Usage(
-                    prompt_tokens=prompt_tokens,
-                    completion_tokens=completion_tokens,
-                    total_tokens=prompt_tokens + completion_tokens
-                )
-            )
-            
-            # 記錄成功回應
-            total_duration = time.time() - start_time
-            logger.log_performance(
-                operation="chat_completion_total",
-                duration=total_duration,
-                request_id=request_id,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens
-            )
-            
-            return response
-            
-        except Exception as e:
-            logger.error("聊天完成請求處理錯誤", error=e, request_id=request_id)
-            return error_handler.handle_internal_error(e, "chat_completions")
 
     async def chat_completions_stream(
         self, request: ChatCompletionRequest
@@ -270,13 +196,24 @@ class OpenAICompatibleAPI:
                 user_message = self._extract_user_message(request.messages)
                 session_id = request.user or f"session-{uuid.uuid4().hex[:8]}"
                 
-                # 準備輸入資料
+                # 載入用戶檔案
+                user_profile = memory_manager.load_user_profile(session_id) or {}
+                
+                # 檢查是否有圖片內容
+                image_content = self._extract_image_content(request.messages)
+                
+                # 準備工作流輸入 - 包含修復的參數
                 input_data = {
                     "user_input": user_message,
                     "session_id": session_id,
-                    "has_image": self._has_image_content(request.messages),
-                    "user_profile": memory_manager.load_user_profile(session_id) or {},
-                    "request_id": request_id
+                    "has_image": bool(image_content),
+                    "image_data": image_content,
+                    "image_source": "api_stream",  # 標記為API串流來源
+                    "user_profile": user_profile,
+                    "request_id": request_id,
+                    "max_tokens": request.max_tokens,
+                    "temperature": request.temperature,
+                    "response_mode": "api_stream"  # API串流模式
                 }
                 
                 # 使用 LangGraph 工作流管理器處理請求
@@ -299,6 +236,11 @@ class OpenAICompatibleAPI:
                     return
 
                 response_content = workflow_result.content
+                
+                # 檢查是否有用戶資料更新
+                if workflow_result.metadata.get("updated_user_profile"):
+                    updated_profile = workflow_result.metadata["updated_user_profile"]
+                    memory_manager.save_user_profile(session_id, updated_profile)
                 
                 # 模擬流式輸出
                 words = response_content.split()

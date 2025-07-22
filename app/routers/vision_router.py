@@ -54,25 +54,44 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 image_data = payload.get("image_data")
 
                 if image_data:
-                    # 取得對應的 VisionAgent
-                    vision_agent = manager.get_agent(session_id)
-                    if vision_agent:
-                        # 呼叫 VisionAgent 進行處理
-                        result = await vision_agent.process({
-                            "image_data": image_data,
-                            "session_id": session_id
-                        })
+                    # 使用統一的工作流管理器
+                    from app.core.workflow import workflow_manager
+                    from app.core.memory import memory_manager
+                    
+                    # 載入用戶檔案
+                    user_profile = memory_manager.load_user_profile(session_id) or {}
+                    
+                    # 準備工作流輸入
+                    workflow_input = {
+                        "user_input": "",  # WebSocket 只傳圖片
+                        "session_id": session_id,
+                        "has_image": True,
+                        "image_data": image_data,
+                        "image_source": "websocket_camera",  # 標記為WebSocket攝影機來源
+                        "user_profile": user_profile,
+                        "response_mode": "websocket"  # WebSocket模式
+                    }
+                    
+                    # 使用修復的工作流管理器
+                    workflow_result = await workflow_manager.execute_workflow(workflow_input)
+                    
+                    if workflow_result.success:
+                        # 檢查是否有用戶資料更新
+                        if workflow_result.metadata.get("updated_user_profile"):
+                            updated_profile = workflow_result.metadata["updated_user_profile"]
+                            memory_manager.save_user_profile(session_id, updated_profile)
                         
                         # 將分析結果傳回前端
                         await manager.send_personal_message({
                             "status": "processed",
-                            "emotion": result.get("metadata", {}).get("emotion_analysis", {}),
-                            "content": result.get("content", "")
+                            "emotion": workflow_result.metadata.get("emotion_analysis", {}),
+                            "content": workflow_result.content,
+                            "agents_used": list(workflow_result.agent_results.keys())
                         }, session_id)
                     else:
                         await manager.send_personal_message({
-                            "status": "error", 
-                            "message": "VisionAgent not found"
+                            "status": "error",
+                            "message": "工作流處理失敗"
                         }, session_id)
 
             except json.JSONDecodeError:
